@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 from PIL import Image, ImageTk
 import os
 from boolean import search_images as boolean_search_images
@@ -54,7 +54,7 @@ class ImageSearchApp:
         )
         self.search_button.pack(side=tk.LEFT, padx=5)
 
-        # Method selector (Boolean | Vectorielle)
+        # Method selector (Boolean | Vectorielle | Histogram)
         method_frame = tk.Frame(root, bg=self.bg_color)
         method_frame.pack(pady=5)
         tk.Label(
@@ -91,6 +91,37 @@ class ImageSearchApp:
             activeforeground=self.fg_color,
         )
         rb_vec.pack(side=tk.LEFT, padx=10)
+
+        rb_hist = tk.Radiobutton(
+            method_frame,
+            text="Histogram",
+            variable=self.method_var,
+            value="histogram",
+            font=self.small_font,
+            bg=self.bg_color,
+            fg=self.fg_color,
+            selectcolor=self.bg_color,
+            activebackground=self.bg_color,
+            activeforeground=self.fg_color,
+        )
+        rb_hist.pack(side=tk.LEFT, padx=10)
+
+        # Histogram: choose image button (enabled only when histogram method selected)
+        self.selected_hist_image = None
+        self.choose_image_button = tk.Button(
+            method_frame,
+            text="Choose image...",
+            font=self.small_font,
+            command=self.choose_histogram_image,
+            bg="#3A3A3A",
+            fg=self.fg_color,
+            relief=tk.RAISED,
+            state=tk.DISABLED,
+        )
+        self.choose_image_button.pack(side=tk.LEFT, padx=10)
+
+        # Toggle choose button when method changes
+        self.method_var.trace_add("write", lambda *args: self._on_method_change())
 
         self.results_label = tk.Label(
             root,
@@ -140,26 +171,84 @@ class ImageSearchApp:
         elif event.num == 5 or event.delta < 0:
             self.canvas.yview_scroll(1, "units")
 
+    def _on_method_change(self):
+        method = self.method_var.get()
+        if method == "histogram":
+            self.choose_image_button.config(state=tk.NORMAL)
+        else:
+            self.choose_image_button.config(state=tk.DISABLED)
+            self.selected_hist_image = None
+
+    def choose_histogram_image(self):
+        path = filedialog.askopenfilename(
+            title="Select query image",
+            initialdir=self.images_path,
+            filetypes=[
+                ("Images", "*.jpg *.jpeg *.png *.bmp *.webp *.avif"),
+                ("All files", "*.*"),
+            ],
+        )
+        if path:
+            self.selected_hist_image = path
+            self.results_label.config(
+                text=f"Selected: {os.path.basename(path)}", fg=self.fg_color
+            )
+
     def perform_search(self):
+        method = self.method_var.get()
         query = self.search_entry.get().strip()
-        if not query:
+        # Only require a text query for boolean/vectorielle methods
+        if method in ("boolean", "vectorielle") and not query:
             messagebox.showwarning("Empty Search", "Please enter search keywords!")
             return
 
         self.clear_results()
-        method = self.method_var.get()
         scores = None
         if method == "vectorielle":
             # vectorielle returns (sorted_images, cosine_scores)
             result_images, scores = vector_search_images(query)
-        else:
+        elif method == "boolean":
             # boolean returns list of image filenames
             result_images = boolean_search_images(query)
+        else:
+            # histogram method ignores textual query; uses selected image
+            if not self.selected_hist_image:
+                messagebox.showwarning(
+                    "Histogram", "Please choose an image for histogram search."
+                )
+                return
+            try:
+                from histogram import search_images_by_histogram
+
+                result_images, distances = search_images_by_histogram(
+                    self.selected_hist_image,
+                    db_json_path="rgb_dictionary.json",
+                    bins=256,
+                    normalize=True,
+                    metric="bhattacharyya",
+                )
+                # For display, pass distances as 'scores'
+                scores = distances
+            except Exception as e:
+                messagebox.showerror(
+                    "Histogram", f"Error while searching by histogram:\n{e}"
+                )
+                return
 
         if not result_images:
-            self.results_label.config(text=f"No images found for '{query}'", fg="red")
+            if method == "histogram":
+                self.results_label.config(text="No similar images found", fg="red")
+            else:
+                self.results_label.config(
+                    text=f"No images found for '{query}'", fg="red"
+                )
         else:
-            suffix = " (vectorielle)" if method == "vectorielle" else " (boolean)"
+            if method == "vectorielle":
+                suffix = " (vectorielle)"
+            elif method == "boolean":
+                suffix = " (boolean)"
+            else:
+                suffix = " (histogram)"
             self.results_label.config(
                 text=f"Found {len(result_images)} image(s)" + suffix, fg=self.fg_color
             )
@@ -199,7 +288,7 @@ class ImageSearchApp:
                 # Build label text; include score if provided
                 label_text = filename
                 if scores is not None and filename in scores:
-                    label_text = f"{filename}  ({scores[filename]:.2f})"
+                    label_text = f"{filename}  ({scores[filename]:.4f})"
 
                 name_label = tk.Label(
                     img_frame,
