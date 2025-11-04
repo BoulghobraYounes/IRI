@@ -2,7 +2,6 @@ from index import dictionnaire
 import cv2 as cv
 import os
 
-
 def search_images(recherche):
     result_images = []
     ou = False
@@ -16,7 +15,9 @@ def search_images(recherche):
 
     for elem in dictionnaire:
         features = dictionnaire[elem]
+        print(features)
         features = set(features)
+        print(features)
         if ou:
             common_features = mot_cle.intersection(features)
             if common_features:
