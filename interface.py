@@ -2,7 +2,8 @@ import tkinter as tk
 from tkinter import messagebox
 from PIL import Image, ImageTk
 import os
-from boolean import search_images
+from boolean import search_images as boolean_search_images
+from vectorielle import search_images as vector_search_images
 
 
 class ImageSearchApp:
@@ -53,6 +54,44 @@ class ImageSearchApp:
         )
         self.search_button.pack(side=tk.LEFT, padx=5)
 
+        # Method selector (Boolean | Vectorielle)
+        method_frame = tk.Frame(root, bg=self.bg_color)
+        method_frame.pack(pady=5)
+        tk.Label(
+            method_frame,
+            text="Method:",
+            font=self.small_font,
+            bg=self.bg_color,
+            fg=self.fg_color,
+        ).pack(side=tk.LEFT, padx=5)
+        self.method_var = tk.StringVar(value="boolean")
+        rb_bool = tk.Radiobutton(
+            method_frame,
+            text="Boolean",
+            variable=self.method_var,
+            value="boolean",
+            font=self.small_font,
+            bg=self.bg_color,
+            fg=self.fg_color,
+            selectcolor=self.bg_color,
+            activebackground=self.bg_color,
+            activeforeground=self.fg_color,
+        )
+        rb_bool.pack(side=tk.LEFT, padx=10)
+        rb_vec = tk.Radiobutton(
+            method_frame,
+            text="Vectorielle",
+            variable=self.method_var,
+            value="vectorielle",
+            font=self.small_font,
+            bg=self.bg_color,
+            fg=self.fg_color,
+            selectcolor=self.bg_color,
+            activebackground=self.bg_color,
+            activeforeground=self.fg_color,
+        )
+        rb_vec.pack(side=tk.LEFT, padx=10)
+
         self.results_label = tk.Label(
             root,
             text="",
@@ -69,7 +108,10 @@ class ImageSearchApp:
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         self.canvas = tk.Canvas(
-            canvas_frame, bg=self.bg_color, yscrollcommand=self.scrollbar.set, highlightthickness=0
+            canvas_frame,
+            bg=self.bg_color,
+            yscrollcommand=self.scrollbar.set,
+            highlightthickness=0,
         )
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
@@ -105,15 +147,23 @@ class ImageSearchApp:
             return
 
         self.clear_results()
-        result_images = search_images(query)
+        method = self.method_var.get()
+        scores = None
+        if method == "vectorielle":
+            # vectorielle returns (sorted_images, cosine_scores)
+            result_images, scores = vector_search_images(query)
+        else:
+            # boolean returns list of image filenames
+            result_images = boolean_search_images(query)
 
         if not result_images:
             self.results_label.config(text=f"No images found for '{query}'", fg="red")
         else:
+            suffix = " (vectorielle)" if method == "vectorielle" else " (boolean)"
             self.results_label.config(
-                text=f"Found {len(result_images)} image(s)", fg=self.fg_color
+                text=f"Found {len(result_images)} image(s)" + suffix, fg=self.fg_color
             )
-            self.display_images(result_images)
+            self.display_images(result_images, scores)
 
     def clear_results(self):
         for widget in self.images_frame.winfo_children():
@@ -121,7 +171,7 @@ class ImageSearchApp:
         self.photo_references.clear()
         self.canvas.yview_moveto(0)
 
-    def display_images(self, image_filenames):
+    def display_images(self, image_filenames, scores=None):
         columns = int(self.root.winfo_width() / 270)
         max_width = 250
         max_height = 250
@@ -146,9 +196,14 @@ class ImageSearchApp:
                 img_label = tk.Label(img_frame, image=photo, bg=self.bg_color)
                 img_label.pack(padx=5, pady=5)
 
+                # Build label text; include score if provided
+                label_text = filename
+                if scores is not None and filename in scores:
+                    label_text = f"{filename}  ({scores[filename]:.2f})"
+
                 name_label = tk.Label(
                     img_frame,
-                    text=filename,
+                    text=label_text,
                     font=("Arial", 12),
                     bg=self.bg_color,
                     fg=self.fg_color,
@@ -171,7 +226,7 @@ class ImageSearchApp:
 
 def main():
     root = tk.Tk()
-    app = ImageSearchApp(root)
+    ImageSearchApp(root)
     root.mainloop()
 
 
