@@ -54,7 +54,7 @@ class ImageSearchApp:
         )
         self.search_button.pack(side=tk.LEFT, padx=5)
 
-        # Method selector (Boolean | Vectorielle | Histogram)
+        # Method selector (Boolean | Vectorielle | Histogram RGB/HSV)
         method_frame = tk.Frame(root, bg=self.bg_color)
         method_frame.pack(pady=5)
         tk.Label(
@@ -92,11 +92,11 @@ class ImageSearchApp:
         )
         rb_vec.pack(side=tk.LEFT, padx=10)
 
-        rb_hist = tk.Radiobutton(
+        rb_hist_rgb = tk.Radiobutton(
             method_frame,
-            text="Histogram",
+            text="Histogram (RGB)",
             variable=self.method_var,
-            value="histogram",
+            value="hist_rgb",
             font=self.small_font,
             bg=self.bg_color,
             fg=self.fg_color,
@@ -104,7 +104,21 @@ class ImageSearchApp:
             activebackground=self.bg_color,
             activeforeground=self.fg_color,
         )
-        rb_hist.pack(side=tk.LEFT, padx=10)
+        rb_hist_rgb.pack(side=tk.LEFT, padx=10)
+
+        rb_hist_hsv = tk.Radiobutton(
+            method_frame,
+            text="Histogram (HSV)",
+            variable=self.method_var,
+            value="hist_hsv",
+            font=self.small_font,
+            bg=self.bg_color,
+            fg=self.fg_color,
+            selectcolor=self.bg_color,
+            activebackground=self.bg_color,
+            activeforeground=self.fg_color,
+        )
+        rb_hist_hsv.pack(side=tk.LEFT, padx=10)
 
         # Histogram: choose image button (enabled only when histogram method selected)
         self.selected_hist_image = None
@@ -173,7 +187,7 @@ class ImageSearchApp:
 
     def _on_method_change(self):
         method = self.method_var.get()
-        if method == "histogram":
+        if method in ("hist_rgb", "hist_hsv"):
             self.choose_image_button.config(state=tk.NORMAL)
         else:
             self.choose_image_button.config(state=tk.DISABLED)
@@ -210,23 +224,34 @@ class ImageSearchApp:
         elif method == "boolean":
             # boolean returns list of image filenames
             result_images = boolean_search_images(query)
-        else:
-            # histogram method ignores textual query; uses selected image
+        elif method in ("hist_rgb", "hist_hsv"):
+            # histogram methods ignore textual query; use selected image
             if not self.selected_hist_image:
                 messagebox.showwarning(
                     "Histogram", "Please choose an image for histogram search."
                 )
                 return
             try:
-                from histogram import search_images_by_histogram
+                if method == "hist_rgb":
+                    from histogram import search_images_by_histogram
 
-                result_images, distances = search_images_by_histogram(
-                    self.selected_hist_image,
-                    db_json_path="rgb_dictionary.json",
-                    bins=256,
-                    normalize=True,
-                    metric="bhattacharyya",
-                )
+                    result_images, distances = search_images_by_histogram(
+                        self.selected_hist_image,
+                        db_json_path="rgb_dictionary.json",
+                        bins=256,
+                        normalize=True,
+                        metric="bhattacharyya",
+                    )
+                else:
+                    from histogram import search_images_by_hsv_histogram
+
+                    result_images, distances = search_images_by_hsv_histogram(
+                        self.selected_hist_image,
+                        db_json_path="hsv_dictionary.json",
+                        bins=256,
+                        normalize=True,
+                        metric="bhattacharyya",
+                    )
                 # For display, pass distances as 'scores'
                 scores = distances
             except Exception as e:
@@ -234,9 +259,11 @@ class ImageSearchApp:
                     "Histogram", f"Error while searching by histogram:\n{e}"
                 )
                 return
+        else:
+            result_images = []
 
         if not result_images:
-            if method == "histogram":
+            if method in ("hist_rgb", "hist_hsv"):
                 self.results_label.config(text="No similar images found", fg="red")
             else:
                 self.results_label.config(
@@ -248,7 +275,9 @@ class ImageSearchApp:
             elif method == "boolean":
                 suffix = " (boolean)"
             else:
-                suffix = " (histogram)"
+                suffix = (
+                    " (histogram RGB)" if method == "hist_rgb" else " (histogram HSV)"
+                )
             self.results_label.config(
                 text=f"Found {len(result_images)} image(s)" + suffix, fg=self.fg_color
             )
